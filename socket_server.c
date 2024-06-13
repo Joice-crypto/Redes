@@ -15,30 +15,32 @@ void func(int sockfd)
 {
     char buff[MAX];
     int n;
+    int linha, coluna;
     // infinite loop for chat
     for (;;)
     {
+        // limpa o buffer
         bzero(buff, MAX);
 
         // read the message from client and copy it in buffer
         read(sockfd, buff, sizeof(buff));
-        // print buffer which contains the client contents
-        printf("Do client: %s\t Para client : ", buff);
-        bzero(buff, MAX);
-        n = 0;
-        // copy server message in the buffer
-        while ((buff[n++] = getchar()) != '\n')
-            ;
 
-        // and send that buffer to client
-        write(sockfd, buff, sizeof(buff));
-
-        // if msg contains "Exit" then server exit and chat ended.
-        if (strncmp("sair", buff, 4) == 0)
+        // Verificar se o cliente quer sair
+        if (strncmp(buff, "sair", 4) == 0)
         {
             printf("Servidor saindo...\n");
             break;
         }
+
+        // Extrair os números da string recebida
+        sscanf(buff, "%d %d", &linha, &coluna);
+
+        // Processar os números (neste exemplo, apenas formatando-os de volta)
+        //   bzero(buff, MAX);
+        snprintf(buff, sizeof(buff), "Recebido linha: %d, coluna: %d", linha, coluna);
+
+        // Enviar a resposta ao cliente
+        write(sockfd, buff, sizeof(buff));
     }
 }
 

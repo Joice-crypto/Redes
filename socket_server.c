@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -6,51 +5,103 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <locale.h>
 #define MAX 80
 #define PORT 8080
 #define SA struct sockaddr
 
-// Function designed for chat between client and server.
 void func(int sockfd)
 {
     char buff[MAX];
     int n;
-    int linha, coluna;
-    // infinite loop for chat
+    int i, j, linha, coluna, contador;
+    char matriz[3][3] = {{'.', '.', '.'}, {'.', '.', '.'}, {'.', '.', '.'}};
+
     for (;;)
     {
-        // limpa o buffer
+        // Limpar o buffer
         bzero(buff, MAX);
+        setlocale(LC_ALL, "");
 
-        // read the message from client and copy it in buffer
-        read(sockfd, buff, sizeof(buff));
-
-        // Verificar se o cliente quer sair
-        if (strncmp(buff, "sair", 4) == 0)
+        for (contador = 0; contador < 9; contador++)
         {
-            printf("Servidor saindo...\n");
-            break;
+            // Enviar tabuleiro e mensagem de turno
+            bzero(buff, sizeof(buff));
+            snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
+            for (i = 0; i < 3; i++)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "%c ", matriz[i][j]);
+                }
+                snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\n");
+            }
+            snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nJogador %d, é a sua vez.\n", (contador % 2) + 1);
+            write(sockfd, buff, sizeof(buff));
+
+            // Ler a jogada do cliente
+            bzero(buff, sizeof(buff));
+            read(sockfd, buff, sizeof(buff));
+            sscanf(buff, "%d %d", &linha, &coluna);
+
+            linha--;
+            coluna--;
+
+            // Processar a jogada
+            if (matriz[linha][coluna] == '.')
+            {
+                matriz[linha][coluna] = (contador % 2) ? 'O' : 'X';
+
+                bzero(buff, sizeof(buff));
+                snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
+                for (i = 0; i < 3; i++)
+                {
+                    for (j = 0; j < 3; j++)
+                    {
+                        snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "%c ", matriz[i][j]);
+                    }
+                    snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\n");
+                }
+
+                // Verificar se alguém ganhou
+                if ((matriz[0][0] == matriz[0][1] && matriz[0][0] == matriz[0][2] && matriz[0][0] != '.') ||
+                    (matriz[1][0] == matriz[1][1] && matriz[1][0] == matriz[1][2] && matriz[1][0] != '.') ||
+                    (matriz[2][0] == matriz[2][1] && matriz[2][0] == matriz[2][2] && matriz[2][0] != '.') ||
+                    (matriz[0][0] == matriz[1][0] && matriz[0][0] == matriz[2][0] && matriz[0][0] != '.') ||
+                    (matriz[0][1] == matriz[1][1] && matriz[0][1] == matriz[2][1] && matriz[0][1] != '.') ||
+                    (matriz[0][2] == matriz[1][2] && matriz[0][2] == matriz[2][2] && matriz[0][2] != '.') ||
+                    (matriz[0][0] == matriz[1][1] && matriz[0][0] == matriz[2][2] && matriz[0][0] != '.') ||
+                    (matriz[0][2] == matriz[1][1] && matriz[0][2] == matriz[2][0] && matriz[0][2] != '.'))
+                {
+                    snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nJogador %d ganhou!\n", (contador % 2) + 1);
+                    write(sockfd, buff, sizeof(buff));
+                    close(sockfd); // Fechar a conexão do lado do servidor
+                    exit(0);
+                }
+            }
+            else
+            {
+                snprintf(buff, sizeof(buff), "O espaço escolhido já está ocupado. Tente novamente.\n");
+                write(sockfd, buff, sizeof(buff));
+                contador--;
+                continue;
+            }
+
+            write(sockfd, buff, sizeof(buff));
         }
 
-        // Extrair os números da string recebida
-        sscanf(buff, "%d %d", &linha, &coluna);
-
-        // Processar os números (neste exemplo, apenas formatando-os de volta)
-        //   bzero(buff, MAX);
-        snprintf(buff, sizeof(buff), "Recebido linha: %d, coluna: %d", linha, coluna);
-
-        // Enviar a resposta ao cliente
+        snprintf(buff, sizeof(buff), "Ninguém ganhou :(\n");
         write(sockfd, buff, sizeof(buff));
+        close(sockfd); // Fechar a conexão do lado do servidor
+        exit(0);
     }
 }
 
-// Driver function
 int main()
 {
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
 
-    // socket create and verification
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1)
     {
@@ -61,12 +112,10 @@ int main()
         printf("Socket criado com sucesso..\n");
     bzero(&servaddr, sizeof(servaddr));
 
-    // assign IP, PORT
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(PORT);
 
-    // Binding newly created socket to given IP and verification
     if ((bind(sockfd, (SA *)&servaddr, sizeof(servaddr))) != 0)
     {
         printf("socket bind falhou...\n");
@@ -75,7 +124,6 @@ int main()
     else
         printf("Socket successfully binded..\n");
 
-    // Now server is ready to listen and verification
     if ((listen(sockfd, 5)) != 0)
     {
         printf("Listen failed...\n");
@@ -85,7 +133,6 @@ int main()
         printf("Server listening..\n");
     len = sizeof(cli);
 
-    // Accept the data packet from client and verification
     connfd = accept(sockfd, (SA *)&cli, &len);
     if (connfd < 0)
     {
@@ -95,9 +142,7 @@ int main()
     else
         printf("server acccept the client...\n");
 
-    // Function for chatting between client and server
     func(connfd);
 
-    // After chatting close the socket
     close(sockfd);
 }

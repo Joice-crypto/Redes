@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <locale.h>
+#include <unistd.h>
 
 #define MAX 80
 #define PORT 8080
@@ -13,64 +14,62 @@ void func(int sockfd)
 {
     char buff[MAX];
     int linha, coluna;
+    int jogador;
 
-    printf("\n\tBem Vindo(a) Ao Jogo da Velha:\n");
-    printf("\n\tJogador 1: X\n");
-    printf("\n\tJogador 2: O\n");
+    bzero(buff, sizeof(buff));
+    read(sockfd, buff, sizeof(buff));
+
+    if (strstr(buff, "Jogador 1") != NULL)
+    {
+        jogador = 1;
+    }
+    else if (strstr(buff, "Jogador 2") != NULL)
+    {
+        jogador = 2;
+    }
+
+    printf("%s\n", buff);
 
     while (1)
     {
-        // Limpar o buffer e ler a mensagem do servidor
         bzero(buff, sizeof(buff));
 
         if (read(sockfd, buff, sizeof(buff)) == 0)
         {
-            // Conexão fechada pelo servidor
             printf("Conexão com o servidor foi fechada.\n");
             break;
         }
 
         printf("%s\n", buff);
 
-        // Verificar se o jogo terminou
-        if (strstr(buff, " Jogador ganhou") != NULL || strstr(buff, "Ninguém ganhou") != NULL)
+        if (strstr(buff, "ganhou") != NULL || strstr(buff, "Ninguém ganhou") != NULL)
         {
             break;
         }
-
-        // Pedir a jogada do jogador
-        printf("Insira a linha em que deverá ser posto seu símbolo (1-3):\n");
-        scanf("%d", &linha);
-        fflush(stdout);
-
-        printf("Insira a coluna em que deverá ser posto seu símbolo (1-3):\n");
-        scanf("%d", &coluna);
-        fflush(stdout);
-
-        // Formatar os números em uma única string
-        snprintf(buff, sizeof(buff), "%d %d", linha, coluna);
-
-        // Enviar a string formatada para o servidor
-        write(sockfd, buff, sizeof(buff));
-
-        // Limpar o buffer e ler a resposta do servidor
-        bzero(buff, sizeof(buff));
-        read(sockfd, buff, sizeof(buff));
-
-        printf("Do servidor: %s\n", buff);
-
-        // Verificar se o espaço está ocupado e repetir a jogada se necessário
-        if (strstr(buff, "O espaço escolhido já está ocupado") != NULL)
+      //  printf("Recebido: %s\n", buff); 
+        if (strstr(buff, "É sua vez.") != NULL)
         {
-            continue;
+            printf("Insira a linha (1-3): ");
+            scanf("%d", &linha);
+            printf("Insira a coluna (1-3): ");
+            scanf("%d", &coluna);
+
+            if (linha < 1 || linha > 3 || coluna < 1 || coluna > 3)
+            {
+                printf("Jogada inválida. Tente novamente.\n");
+                continue; 
+            }
+
+            snprintf(buff, sizeof(buff), "%d %d", linha, coluna);
+            write(sockfd, buff, sizeof(buff));
         }
     }
 }
 
 int main()
 {
-    int sockfd, connfd;
-    struct sockaddr_in servaddr, cli;
+    int sockfd;
+    struct sockaddr_in servaddr;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1)
@@ -78,8 +77,7 @@ int main()
         printf("Criação do socket falhou...\n");
         exit(0);
     }
-    else
-        printf("Socket criado com sucesso..\n");
+    printf("Socket criado com sucesso para Cliente..\n");
     bzero(&servaddr, sizeof(servaddr));
 
     servaddr.sin_family = AF_INET;
@@ -91,8 +89,7 @@ int main()
         printf("Conexão com o servidor falhou...\n");
         exit(0);
     }
-    else
-        printf("Conectado ao servidor..\n");
+    printf("Conectado ao servidor para Cliente..\n");
 
     func(sockfd);
 

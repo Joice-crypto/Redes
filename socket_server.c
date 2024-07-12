@@ -1,16 +1,15 @@
 #include <stdio.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 #include <locale.h>
+
 #define MAX 80
 #define PORT 8080
 #define SA struct sockaddr
 
-void func(int sockfd)
+void func(int sockfd1, int sockfd2)
 {
     char buff[MAX];
     int n;
@@ -25,7 +24,11 @@ void func(int sockfd)
 
         for (contador = 0; contador < 9; contador++)
         {
-            // Enviar tabuleiro e mensagem de turno
+            int current_sockfd = (contador % 2 == 0) ? sockfd1 : sockfd2;
+            int waiting_sockfd = (contador % 2 == 0) ? sockfd2 : sockfd1;
+            char current_player = (contador % 2 == 0) ? 'X' : 'O';
+
+            // Enviar tabuleiro e mensagem de turno para o jogador atual
             bzero(buff, sizeof(buff));
             snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
             for (i = 0; i < 3; i++)
@@ -36,12 +39,32 @@ void func(int sockfd)
                 }
                 snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\n");
             }
-            snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nJogador %d, é a sua vez.\n", (contador % 2) + 1);
-            write(sockfd, buff, sizeof(buff));
 
-            // Ler a jogada do cliente
+            write(current_sockfd, buff, sizeof(buff));
+            snprintf(buff, sizeof(buff), "Olá, jogador %d! É sua vez.\n", (contador % 2) + 1);
+            write(current_sockfd, buff, sizeof(buff));
+
+            // Enviar mensagem de espera para o jogador que está aguardando
             bzero(buff, sizeof(buff));
-            read(sockfd, buff, sizeof(buff));
+            snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
+            for (i = 0; i < 3; i++)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "%c ", matriz[i][j]);
+                }
+                snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\n");
+            }
+            snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nAguarde sua vez...\n");
+            write(waiting_sockfd, buff, sizeof(buff)); 
+            // Ler a jogada do cliente atual
+            bzero(buff, sizeof(buff));
+            if (read(current_sockfd, buff, sizeof(buff)) == 0)
+            {
+               
+                printf("Cliente desconectado.\n");
+                break;
+            }
             sscanf(buff, "%d %d", &linha, &coluna);
 
             linha--;
@@ -50,7 +73,7 @@ void func(int sockfd)
             // Processar a jogada
             if (matriz[linha][coluna] == '.')
             {
-                matriz[linha][coluna] = (contador % 2) ? 'O' : 'X';
+                matriz[linha][coluna] = current_player;
 
                 bzero(buff, sizeof(buff));
                 snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
@@ -74,32 +97,49 @@ void func(int sockfd)
                     (matriz[0][2] == matriz[1][1] && matriz[0][2] == matriz[2][0] && matriz[0][2] != '.'))
                 {
                     snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nJogador %d ganhou!\n", (contador % 2) + 1);
-                    write(sockfd, buff, sizeof(buff));
-                    close(sockfd); // Fechar a conexão do lado do servidor
+                    write(sockfd1, buff, sizeof(buff));
+                    write(sockfd2, buff, sizeof(buff));
+                    close(sockfd1); // Fechar a conexão do lado do servidor
+                    close(sockfd2); 
                     exit(0);
                 }
             }
             else
             {
                 snprintf(buff, sizeof(buff), "O espaço escolhido já está ocupado. Tente novamente.\n");
-                write(sockfd, buff, sizeof(buff));
+                write(current_sockfd, buff, sizeof(buff));
                 contador--;
                 continue;
             }
 
-            write(sockfd, buff, sizeof(buff));
+            // Enviar tabuleiro atualizado para ambos os jogadores
+            bzero(buff, sizeof(buff));
+            snprintf(buff, sizeof(buff), "Tabuleiro atual:\n");
+            for (i = 0; i < 3; i++)
+            {
+                for (j = 0; j < 3; j++)
+                {
+                    snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "%c ", matriz[i][j]);
+                }
+                snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\n");
+            }
+            snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "\nJogador %d fez a jogada em (%d, %d)\n", (contador % 2) + 1, linha + 1, coluna + 1);
+            write(sockfd1, buff, sizeof(buff));
+            write(sockfd2, buff, sizeof(buff));
         }
 
         snprintf(buff, sizeof(buff), "Ninguém ganhou :(\n");
-        write(sockfd, buff, sizeof(buff));
-        close(sockfd); // Fechar a conexão do lado do servidor
+        write(sockfd1, buff, sizeof(buff));
+        write(sockfd2, buff, sizeof(buff));
+        close(sockfd1); // Fechar a conexão do lado do servidor
+        close(sockfd2); 
         exit(0);
     }
 }
 
 int main()
 {
-    int sockfd, connfd, len;
+    int sockfd, connfd1, connfd2, len;
     struct sockaddr_in servaddr, cli;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -109,7 +149,9 @@ int main()
         exit(0);
     }
     else
+    {
         printf("Socket criado com sucesso..\n");
+    }
     bzero(&servaddr, sizeof(servaddr));
 
     servaddr.sin_family = AF_INET;
@@ -122,7 +164,9 @@ int main()
         exit(0);
     }
     else
+    {
         printf("Socket successfully binded..\n");
+    }
 
     if ((listen(sockfd, 5)) != 0)
     {
@@ -130,19 +174,36 @@ int main()
         exit(0);
     }
     else
+    {
         printf("Server listening..\n");
+    }
     len = sizeof(cli);
 
-    connfd = accept(sockfd, (SA *)&cli, &len);
-    if (connfd < 0)
+    // Aceitar o primeiro cliente
+    connfd1 = accept(sockfd, (SA *)&cli, &len);
+    if (connfd1 < 0)
     {
         printf("server acccept failed...\n");
         exit(0);
     }
     else
-        printf("server acccept the client...\n");
+    {
+        printf("Server accepted the first client...\n");
+    }
 
-    func(connfd);
+    // Aceitar o segundo cliente
+    connfd2 = accept(sockfd, (SA *)&cli, &len);
+    if (connfd2 < 0)
+    {
+        printf("server acccept failed...\n");
+        exit(0);
+    }
+    else
+    {
+        printf("Server accepted the second client...\n");
+    }
+
+    func(connfd1, connfd2);
 
     close(sockfd);
 }

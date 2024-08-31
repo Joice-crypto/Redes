@@ -1,8 +1,5 @@
-Para rodar o projeto: 
+Trabalhos práticos da disciplina de Redes de Computadores 2024
 
-gcc socket_server.c -o server
-./server 
-gcc socket_client.c -o client
-./client 
+TP1 - Jogo multiusuário com conexão TCP;
 
-O servidor deve estar rodando para o cliente se conectar. 
+TP2 - Implementação de diversos tipos de servidores testados com o software siege.
